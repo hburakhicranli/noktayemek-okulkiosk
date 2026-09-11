@@ -1,0 +1,63 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email == 'yemeknokta@gmail.com';
+    }
+
+    function isOwningDevice(deviceId) {
+      return request.auth != null
+        && get(/databases/$(database)/documents/devices/$(deviceId)).data.authUid == request.auth.uid;
+    }
+
+    // Shared, fleet-wide settings (currently just the idle-screensaver image list).
+    match /config/{document} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+
+    match /devices/{deviceId} {
+      // A device's very first read happens before its own document exists (it's
+      // checking whether to create one) -- resource.data would be undefined then,
+      // so that case has to be allowed explicitly rather than via resource.data.
+      allow read: if isAdmin()
+        || (request.auth != null && !exists(/databases/$(database)/documents/devices/$(deviceId)))
+        || (request.auth != null && resource.data.authUid == request.auth.uid);
+      // Admin can create/edit anything (label, targetPackage, ...).
+      allow write: if isAdmin();
+      // A device may create its own first-run document, and later update only
+      // its own status fields (never impersonate another device).
+      allow create: if request.auth != null
+        && request.resource.data.authUid == request.auth.uid;
+      // .get(field, default) instead of plain field access: older device docs predate
+      // some of these fields, and reading a genuinely-missing map key throws (which denies
+      // the whole rule) rather than just comparing as absent.
+      allow update: if request.auth != null
+        && resource.data.authUid == request.auth.uid
+        && request.resource.data.authUid == request.auth.uid
+        && request.resource.data.get('label', '') == resource.data.get('label', '')
+        && request.resource.data.get('targetPackage', '') == resource.data.get('targetPackage', '')
+        && request.resource.data.get('webUrl', '') == resource.data.get('webUrl', '');
+
+      match /events/{eventId} {
+        allow read: if isAdmin() || isOwningDevice(deviceId);
+        allow create: if isAdmin() || isOwningDevice(deviceId);
+        allow update, delete: if isAdmin();
+      }
+
+      match /commands/{commandId} {
+        allow read: if isAdmin() || isOwningDevice(deviceId);
+        // Only the admin panel issues new commands.
+        allow create: if isAdmin();
+        // The device may only flip status pending -> done on its own commands.
+        allow update: if isOwningDevice(deviceId)
+          && resource.data.status == 'pending'
+          && request.resource.data.status == 'done';
+        allow delete: if isAdmin();
+      }
+    }
+  }
+}

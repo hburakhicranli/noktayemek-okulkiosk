@@ -1,0 +1,22 @@
+# Node / panel
+panel/node_modules/
+panel/dist/
+panel/.env
+
+# Android
+android-kiosk/.gradle/
+android-kiosk/build/
+android-kiosk/app/build/
+android-kiosk/local.properties
+android-kiosk/app/google-services.json
+android-kiosk/.idea/
+android-kiosk/*.iml
+android-kiosk/app/*.iml
+
+# Firebase
+firebase/.firebase/
+firebase/firebase-debug.log
+
+# OS
+.DS_Store
+Thumbs.db
